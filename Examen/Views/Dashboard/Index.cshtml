@@ -1,0 +1,280 @@
+﻿@page
+
+@{
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+}
+
+<div class="text-center">
+    <h4 class="display-5">Dashboard Metereologico</h4>
+    <br />
+</div>
+
+<div>
+    <div class="row" style="padding-top: 10px; padding-bottom: 15px;">
+        <div class="col">
+            <label for="modo">Modo:</label>
+            <select id="modo" name="modo" class="form-control">
+                <option value="day">Día</option>
+                <option value="month">Mes</option>
+            </select>
+        </div>
+
+        <div class="col">
+            <label for="fechaDesde">Desde:</label>
+            <input type="date" id="fechaDesde" name="fechaDesde" class="form-control" required>
+        </div>
+
+        <div class="col">
+            <label for="fechaHasta">Hasta:</label>
+            <input type="date" id="fechaHasta" name="fechaHasta" class="form-control" required>
+        </div>
+
+        <div class="col d-flex align-items-end">
+            <button id="botonFiltro" class="btn btn-primary">Filtrar</button>
+        </div>
+    </div>
+    <div id="loading" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+
+        <img src="/load.gif" width="80px" height="80px"/>
+    </div>
+
+    <div class="row">
+        <br/>
+    </div>
+    <div class="row" style="padding-top: 10px; padding-bottom: 15px;">
+        <div class="row">
+            <div class="col-md-10">
+                <div class="row">
+                    <label>Radicación</label>
+                </div>
+                <div class="row">
+                    <canvas id="radiacionChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row" style="padding-top: 10px; padding-bottom: 15px;">
+            <div class="col-md-10">
+                <div class="row">
+                    <label>Temperatura</label>
+                </div>
+                <div class="row">
+                    <canvas id="temperaturaChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="row" style="padding-top: 10px; padding-bottom: 15px;">
+            <div class="col-md-10">
+                <div class="row">
+                    <label>Humedad</label>
+                </div>
+                <div class="row">
+                    <canvas id="humedadChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    @section Scripts {
+        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            var radiacionChartInstance;
+            var temperaturaChartInstance;
+            var humedadChartInstance;
+            Rojo = '#FF0000';
+            Verde = '#00FF00';
+            Azul = '#0000FF';
+            Amarillo = '#FFFF00';
+            Cian = '#00FFFF';
+            Magenta = '#FF00FF';
+            Naranja = '#FFA500';
+            Lima = '#00FF00';
+            Rosa = '#FFC0CB';
+            Purpura = '#800080';
+            Marrón = '#A52A2A';
+            Gris = '#808080';
+            Negro = '#000000';
+            Blanco = '#FFFFFF';
+            Azul_Marino = '#000080';
+            Verde_Oliva = '#808000';
+
+
+            $(document).ready(function () {
+                $('#fechaDesde').val('2024-01-01');
+                $('#fechaHasta').val('2024-01-15');
+
+                $('#botonFiltro').on('click', filtrar);
+            });
+
+            function filtrar() {
+                var modo = $('#modo').val();
+                var fechaDesde = $('#fechaDesde').val();
+                var fechaHasta = $('#fechaHasta').val();
+                $('#loading').show();
+                // Realizar solicitud al servidor para obtener los datos
+                $.ajax({
+                    type: 'GET',
+                    url: '/Dashboard/GetData',
+                    data: {
+                        modo: modo,
+                        fechaDesde: fechaDesde,
+                        fechaHasta: fechaHasta
+                    },
+                    success: function (response) {
+                        if (response && response.device_data) {
+                            var radiacionData = response.device_data.find(function (d) {
+                                return d.codigoParametro === 18054;
+                            });
+                            var temperaturaData = response.device_data.find(function (d) {
+                                return d.codigoParametro === 18001;
+                            });
+                            var humedadData = response.device_data.find(function (d) {
+                                return d.codigoParametro === 18036;
+                            });
+
+                            // Combinar con device_dates antes de enviarlo a drawChart
+                            if (radiacionData) {
+                                var combinedRadiacionData = { device_dates: response.device_dates, ...radiacionData };
+                                drawChart('radiacionChart', combinedRadiacionData, 'radiacion'); // Añadir 'radiacion' como chartType
+                            }
+                            if (temperaturaData) {
+                                var combinedTemperaturaData = { device_dates: response.device_dates, ...temperaturaData };
+                                drawChart('temperaturaChart', combinedTemperaturaData, 'temperatura'); // Añadir 'temperatura' como chartType
+                            }
+                            if (humedadData) {
+                                var combinedHumedadData = { device_dates: response.device_dates, ...humedadData };
+                                drawChart('humedadChart', combinedHumedadData, 'humedad'); // Añadir 'humedad' como chartType
+                            }
+                            $('#loading').hide();
+                        } else {
+                            $('#loading').hide();
+                            console.error('Los datos recibidos no son válidos o no contienen device_data.');
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        $('#loading').hide();
+                        console.error('Error al cargar los datos:', error);
+                    }
+                });
+
+            }
+
+            function drawChart(canvasId, data, chartType) {
+                const ctx = document.getElementById(canvasId).getContext('2d');
+
+                // Destruir el gráfico existente antes de crear uno nuevo
+                if (chartType === 'radiacion' && radiacionChartInstance) {
+                    radiacionChartInstance.destroy();
+                } else if (chartType === 'temperatura' && temperaturaChartInstance) {
+                    temperaturaChartInstance.destroy();
+                } else if (chartType === 'humedad' && humedadChartInstance) {
+                    humedadChartInstance.destroy();
+                }
+                
+
+
+                const newChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.device_dates,
+                        datasets: [
+                            {
+                                label: 'Minimos ' + data.nombreParametro,
+                                data: data.values.minData,
+                                borderColor: Azul, // Usar el color determinado dinámicamente
+                                fill: false
+                            },
+                            {
+                                label: 'Promedio ' + data.nombreParametro,
+                                data: data.values.avgData,
+                                borderColor: Rosa, // Usar el color determinado dinámicamente
+                                fill: false
+                            },
+                            {
+                                label: 'Maximos ' + data.nombreParametro,
+                                data: data.values.maxData,
+                                borderColor: Rojo, // Usar el color determinado dinámicamente
+                                fill: false
+                            },
+                            
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: {
+                                ticks: {
+                                    maxRotation: 90,
+                                    minRotation: 90
+                                }
+                            },
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+
+                // Guardar la instancia del nuevo gráfico en la variable correspondiente
+                if (chartType === 'radiacion') {
+                    radiacionChartInstance = newChart;
+                } else if (chartType === 'temperatura') {
+                    temperaturaChartInstance = newChart;
+                } else if (chartType === 'humedad') {
+                    humedadChartInstance = newChart;
+                }
+            }
+
+            function filtrar() {
+                var modo = $('#modo').val();
+                var fechaDesde = $('#fechaDesde').val();
+                var fechaHasta = $('#fechaHasta').val();
+
+                // Realizar solicitud al servidor para obtener los datos
+                $.ajax({
+                    type: 'GET',
+                    url: '/Dashboard/GetData',
+                    data: {
+                        modo: modo,
+                        fechaDesde: fechaDesde,
+                        fechaHasta: fechaHasta
+                    },
+                    success: function (response) {
+                        if (response && response.device_data) {
+                            var radiacionData = response.device_data.find(function (d) {
+                                return d.codigoParametro === 18054;
+                            });
+                            var temperaturaData = response.device_data.find(function (d) {
+                                return d.codigoParametro === 18001;
+                            });
+                            var humedadData = response.device_data.find(function (d) {
+                                return d.codigoParametro === 18036;
+                            });
+
+                            // Combinar con device_dates antes de enviarlo a drawChart
+                            if (radiacionData) {
+                                var combinedRadiacionData = { device_dates: response.device_dates, ...radiacionData };
+                                drawChart('radiacionChart', combinedRadiacionData, 'radiacion');
+                            }
+                            if (temperaturaData) {
+                                var combinedTemperaturaData = { device_dates: response.device_dates, ...temperaturaData };
+                                drawChart('temperaturaChart', combinedTemperaturaData, 'temperatura');
+                            }
+                            if (humedadData) {
+                                var combinedHumedadData = { device_dates: response.device_dates, ...humedadData };
+                                drawChart('humedadChart', combinedHumedadData, 'humedad');
+                            }
+                        } else {
+                            console.error('Los datos recibidos no son válidos o no contienen device_data.');
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        console.error('Error al cargar los datos:', error);
+                    }
+                });
+            }
+        </script>
+    }
+</div>
